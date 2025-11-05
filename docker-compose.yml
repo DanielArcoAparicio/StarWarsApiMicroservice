@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: starwars-postgres
+    environment:
+      POSTGRES_DB: starwarsdb
+      POSTGRES_USER: starwars
+      POSTGRES_PASSWORD: starwars123
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - starwars-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U starwars"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Star Wars API
+  starwars-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: starwars-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - ConnectionStrings__DefaultConnection=Host=postgres;Port=5432;Database=starwarsdb;Username=starwars;Password=starwars123
+    ports:
+      - "5000:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - starwars-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+
+networks:
+  starwars-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+

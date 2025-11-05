@@ -1,0 +1,110 @@
+### Star Wars API - Integration Tests
+### Archivo para probar la API con extensiones HTTP de VS Code o JetBrains
+
+@baseUrl = http://localhost:5000/api/v1
+@characterId = 1
+
+### Health Check
+GET http://localhost:5000/health
+
+### 1. Listar personajes (Página 1)
+GET {{baseUrl}}/characters?page=1
+
+### 2. Listar personajes (Página 2)
+GET {{baseUrl}}/characters?page=2
+
+### 3. Obtener personaje por ID (Luke Skywalker)
+GET {{baseUrl}}/characters/{{characterId}}
+
+### 4. Obtener personaje por ID (Darth Vader)
+GET {{baseUrl}}/characters/4
+
+### 5. Buscar personaje por nombre (Luke)
+GET {{baseUrl}}/characters/search?name=Luke
+
+### 6. Buscar personaje por nombre (Leia)
+GET {{baseUrl}}/characters/search?name=Leia
+
+### 7. Buscar personaje por nombre (Vader)
+GET {{baseUrl}}/characters/search?name=Vader
+
+### 8. Ver todos los favoritos
+GET {{baseUrl}}/favorites
+
+### 9. Agregar personaje a favoritos (Luke Skywalker)
+POST {{baseUrl}}/favorites
+Content-Type: application/json
+
+{
+  "characterId": "1",
+  "notes": "El héroe de la saga original"
+}
+
+### 10. Agregar personaje a favoritos (Darth Vader)
+POST {{baseUrl}}/favorites
+Content-Type: application/json
+
+{
+  "characterId": "4",
+  "notes": "El villano más icónico"
+}
+
+### 11. Agregar personaje a favoritos (Leia Organa)
+POST {{baseUrl}}/favorites
+Content-Type: application/json
+
+{
+  "characterId": "5",
+  "notes": "Princesa y líder de la rebelión"
+}
+
+### 12. Ver favoritos después de agregar
+GET {{baseUrl}}/favorites
+
+### 13. Obtener un favorito específico (usar ID del response anterior)
+GET {{baseUrl}}/favorites/1
+
+### 14. Eliminar favorito por ID de base de datos
+DELETE {{baseUrl}}/favorites/1
+
+### 15. Eliminar favorito por SWAPI ID
+DELETE {{baseUrl}}/favorites/character/4
+
+### 16. Ver historial de peticiones (últimas 20)
+GET {{baseUrl}}/history?limit=20
+
+### 17. Ver historial de peticiones (últimas 50)
+GET {{baseUrl}}/history?limit=50
+
+### 18. Ver estadísticas de uso
+GET {{baseUrl}}/history/statistics
+
+### 19. Test de personaje no existente (debería retornar 404)
+GET {{baseUrl}}/characters/9999
+
+### 20. Test de búsqueda sin resultados
+GET {{baseUrl}}/characters/search?name=PersonajeQueNoExiste
+
+### 21. Test de agregar favorito con ID inválido (debería retornar 404)
+POST {{baseUrl}}/favorites
+Content-Type: application/json
+
+{
+  "characterId": "9999",
+  "notes": "Este no debería funcionar"
+}
+
+### 22. Test de rate limiting (ejecutar múltiples veces rápidamente)
+GET {{baseUrl}}/characters
+
+### 23. Test de búsqueda con caracteres especiales
+GET {{baseUrl}}/characters/search?name=C-3PO
+
+### 24. Test de búsqueda case-insensitive
+GET {{baseUrl}}/characters/search?name=luke
+
+### 25. Verificar caché (la segunda llamada debería ser más rápida)
+GET {{baseUrl}}/characters/1
+
+###
+
