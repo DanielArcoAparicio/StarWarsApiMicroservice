@@ -30,27 +30,42 @@ public class CacheService : ICacheService
             return cachedValue;
         }
 
-        // Si no está en memoria, busca en base de datos
-        var dbCache = await _dbContext.CachedData
-            .FirstOrDefaultAsync(c => c.CacheKey == key && c.ExpirationDate > DateTime.UtcNow, cancellationToken);
-
-        if (dbCache != null)
+        // Si no está en memoria, busca en base de datos (con manejo de errores)
+        try
         {
-            // Deserializar y guardar en memoria
-            var value = JsonSerializer.Deserialize<T>(dbCache.Data);
-            
-            if (value != null)
+            var dbCache = await _dbContext.CachedData
+                .FirstOrDefaultAsync(c => c.CacheKey == key && c.ExpirationDate > DateTime.UtcNow, cancellationToken);
+
+            if (dbCache != null)
             {
-                var expiration = dbCache.ExpirationDate - DateTime.UtcNow;
-                _memoryCache.Set(key, value, expiration);
+                // Deserializar y guardar en memoria
+                var value = JsonSerializer.Deserialize<T>(dbCache.Data);
+                
+                if (value != null)
+                {
+                    var expiration = dbCache.ExpirationDate - DateTime.UtcNow;
+                    _memoryCache.Set(key, value, expiration);
 
-                // Actualizar estadísticas
-                dbCache.AccessCount++;
-                dbCache.LastAccessDate = DateTime.UtcNow;
-                await _dbContext.SaveChangesAsync(cancellationToken);
+                    // Actualizar estadísticas (con manejo de errores)
+                    try
+                    {
+                        dbCache.AccessCount++;
+                        dbCache.LastAccessDate = DateTime.UtcNow;
+                        await _dbContext.SaveChangesAsync(cancellationToken);
+                    }
+                    catch
+                    {
+                        // Si falla guardar estadísticas, continuar sin actualizar
+                    }
 
-                return value;
+                    return value;
+                }
             }
+        }
+        catch
+        {
+            // Si hay error con la BD, solo usar memoria cache (ya retornó null si no estaba en memoria)
+            return null;
         }
 
         return null;
@@ -61,35 +76,43 @@ public class CacheService : ICacheService
         var exp = expiration ?? _defaultExpiration;
         var expirationDate = DateTime.UtcNow.Add(exp);
 
-        // Guardar en memoria
+        // Guardar en memoria (siempre funciona)
         _memoryCache.Set(key, value, exp);
 
-        // Guardar en base de datos
-        var serializedData = JsonSerializer.Serialize(value);
-        
-        var existingCache = await _dbContext.CachedData
-            .FirstOrDefaultAsync(c => c.CacheKey == key, cancellationToken);
+        // Guardar en base de datos (con manejo de errores)
+        try
+        {
+            var serializedData = JsonSerializer.Serialize(value);
+            
+            var existingCache = await _dbContext.CachedData
+                .FirstOrDefaultAsync(c => c.CacheKey == key, cancellationToken);
 
-        if (existingCache != null)
-        {
-            existingCache.Data = serializedData;
-            existingCache.ExpirationDate = expirationDate;
-            existingCache.LastAccessDate = DateTime.UtcNow;
-        }
-        else
-        {
-            _dbContext.CachedData.Add(new CachedData
+            if (existingCache != null)
             {
-                CacheKey = key,
-                Data = serializedData,
-                CreatedDate = DateTime.UtcNow,
-                ExpirationDate = expirationDate,
-                AccessCount = 0,
-                LastAccessDate = DateTime.UtcNow
-            });
-        }
+                existingCache.Data = serializedData;
+                existingCache.ExpirationDate = expirationDate;
+                existingCache.LastAccessDate = DateTime.UtcNow;
+            }
+            else
+            {
+                _dbContext.CachedData.Add(new CachedData
+                {
+                    CacheKey = key,
+                    Data = serializedData,
+                    CreatedDate = DateTime.UtcNow,
+                    ExpirationDate = expirationDate,
+                    AccessCount = 0,
+                    LastAccessDate = DateTime.UtcNow
+                });
+            }
 
-        await _dbContext.SaveChangesAsync(cancellationToken);
+            await _dbContext.SaveChangesAsync(cancellationToken);
+        }
+        catch
+        {
+            // Si falla guardar en BD, al menos está en memoria cache
+            // No lanzar excepción para que el servicio continúe funcionando
+        }
     }
 
     public async Task RemoveAsync(string key, CancellationToken cancellationToken = default)

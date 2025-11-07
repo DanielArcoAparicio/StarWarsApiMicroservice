@@ -88,10 +88,23 @@ if (app.Environment.IsDevelopment())
 }
 
 // Apply migrations automatically
-using (var scope = app.Services.CreateScope())
+try
 {
-    var dbContext = scope.ServiceProvider.GetRequiredService<StarWarsDbContext>();
-    dbContext.Database.Migrate();
+    using (var scope = app.Services.CreateScope())
+    {
+        var dbContext = scope.ServiceProvider.GetRequiredService<StarWarsDbContext>();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        
+        logger.LogInformation("Aplicando migraciones de base de datos...");
+        dbContext.Database.Migrate();
+        logger.LogInformation("Migraciones aplicadas correctamente");
+    }
+}
+catch (Exception ex)
+{
+    var logger = app.Services.GetRequiredService<ILogger<Program>>();
+    logger.LogError(ex, "Error al aplicar migraciones. La aplicación continuará pero algunas funcionalidades pueden no estar disponibles.");
+    // No detener la aplicación si las migraciones fallan
 }
 
 app.UseIpRateLimiting();

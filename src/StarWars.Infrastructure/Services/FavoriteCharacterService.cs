@@ -20,9 +20,17 @@ public class FavoriteCharacterService : IFavoriteCharacterService
 
     public async Task<List<FavoriteCharacter>> GetAllFavoritesAsync(CancellationToken cancellationToken = default)
     {
-        return await _dbContext.FavoriteCharacters
-            .OrderByDescending(f => f.AddedDate)
-            .ToListAsync(cancellationToken);
+        try
+        {
+            return await _dbContext.FavoriteCharacters
+                .OrderByDescending(f => f.AddedDate)
+                .ToListAsync(cancellationToken);
+        }
+        catch
+        {
+            // Si hay error con la BD, retornar lista vacía en lugar de fallar
+            return new List<FavoriteCharacter>();
+        }
     }
 
     public async Task<FavoriteCharacter?> GetFavoriteByIdAsync(int id, CancellationToken cancellationToken = default)
@@ -91,8 +99,16 @@ public class FavoriteCharacterService : IFavoriteCharacterService
 
     public async Task<bool> IsFavoriteAsync(string swapiId, CancellationToken cancellationToken = default)
     {
-        return await _dbContext.FavoriteCharacters
-            .AnyAsync(f => f.SwapiId == swapiId, cancellationToken);
+        try
+        {
+            return await _dbContext.FavoriteCharacters
+                .AnyAsync(f => f.SwapiId == swapiId, cancellationToken);
+        }
+        catch
+        {
+            // Si hay error con la BD, retornar false (no es favorito) en lugar de fallar
+            return false;
+        }
     }
 }
 

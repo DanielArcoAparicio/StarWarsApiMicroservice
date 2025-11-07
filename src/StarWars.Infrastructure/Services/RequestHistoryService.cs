@@ -35,22 +35,41 @@ public class RequestHistoryService : IRequestHistoryService
         string? ipAddress = null,
         CancellationToken cancellationToken = default)
     {
-        var history = new ApiRequestHistory
+        try
         {
-            Endpoint = endpoint,
-            Method = method,
-            QueryParameters = queryParameters,
-            StatusCode = statusCode,
-            RequestDate = DateTime.UtcNow,
-            ResponseTimeMs = responseTimeMs,
-            ErrorMessage = errorMessage,
-            IpAddress = ipAddress
-        };
+            var history = new ApiRequestHistory
+            {
+                Endpoint = endpoint,
+                Method = method,
+                QueryParameters = queryParameters,
+                StatusCode = statusCode,
+                RequestDate = DateTime.UtcNow,
+                ResponseTimeMs = responseTimeMs,
+                ErrorMessage = errorMessage,
+                IpAddress = ipAddress
+            };
 
-        _dbContext.RequestHistory.Add(history);
-        await _dbContext.SaveChangesAsync(cancellationToken);
+            _dbContext.RequestHistory.Add(history);
+            await _dbContext.SaveChangesAsync(cancellationToken);
 
-        return history;
+            return history;
+        }
+        catch
+        {
+            // Si falla guardar en BD, retornar un objeto con los datos pero sin ID
+            // Esto permite que el middleware continúe sin fallar
+            return new ApiRequestHistory
+            {
+                Endpoint = endpoint,
+                Method = method,
+                QueryParameters = queryParameters,
+                StatusCode = statusCode,
+                RequestDate = DateTime.UtcNow,
+                ResponseTimeMs = responseTimeMs,
+                ErrorMessage = errorMessage,
+                IpAddress = ipAddress
+            };
+        }
     }
 
     public async Task<Dictionary<string, int>> GetRequestStatisticsAsync(CancellationToken cancellationToken = default)

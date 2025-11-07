@@ -28,25 +28,44 @@ public class SwapiClient : ISwapiService
 
     public async Task<PagedResult<Character>> GetCharactersAsync(int page = 1, CancellationToken cancellationToken = default)
     {
-        var response = await _httpClient.GetAsync($"people/?page={page}", cancellationToken);
-        response.EnsureSuccessStatusCode();
-
-        var swapiResult = await response.Content.ReadFromJsonAsync<SwapiPagedResponse<SwapiPerson>>(_jsonOptions, cancellationToken);
-        
-        if (swapiResult == null)
-            return new PagedResult<Character>();
-
-        var characters = swapiResult.Results.Select(MapToCharacter).ToList();
-
-        return new PagedResult<Character>
+        try
         {
-            Count = swapiResult.Count,
-            Next = swapiResult.Next,
-            Previous = swapiResult.Previous,
-            Results = characters,
-            Page = page,
-            TotalPages = (int)Math.Ceiling(swapiResult.Count / 10.0)
-        };
+            var response = await _httpClient.GetAsync($"people/?page={page}", cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException($"SWAPI returned status code: {response.StatusCode}");
+            }
+
+            var swapiResult = await response.Content.ReadFromJsonAsync<SwapiPagedResponse<SwapiPerson>>(_jsonOptions, cancellationToken);
+            
+            if (swapiResult == null)
+                return new PagedResult<Character>();
+
+            var characters = swapiResult.Results.Select(MapToCharacter).ToList();
+
+            return new PagedResult<Character>
+            {
+                Count = swapiResult.Count,
+                Next = swapiResult.Next,
+                Previous = swapiResult.Previous,
+                Results = characters,
+                Page = page,
+                TotalPages = (int)Math.Ceiling(swapiResult.Count / 10.0)
+            };
+        }
+        catch (HttpRequestException)
+        {
+            throw; // Re-lanzar para que el controlador lo maneje
+        }
+        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+        {
+            throw new HttpRequestException("Timeout al conectar con SWAPI", ex);
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException("Error al obtener personajes de SWAPI", ex);
+        }
     }
 
     public async Task<Character?> GetCharacterByIdAsync(string id, CancellationToken cancellationToken = default)
@@ -56,29 +75,64 @@ public class SwapiClient : ISwapiService
             var response = await _httpClient.GetAsync($"people/{id}/", cancellationToken);
             
             if (!response.IsSuccessStatusCode)
-                return null;
+            {
+                // Si es 404, retornar null (personaje no encontrado)
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                {
+                    return null;
+                }
+                // Para otros errores, lanzar excepción
+                throw new HttpRequestException($"SWAPI returned status code: {response.StatusCode}");
+            }
 
             var swapiPerson = await response.Content.ReadFromJsonAsync<SwapiPerson>(_jsonOptions, cancellationToken);
             
             return swapiPerson != null ? MapToCharacter(swapiPerson) : null;
         }
-        catch
+        catch (HttpRequestException)
         {
-            return null;
+            throw; // Re-lanzar para que el controlador lo maneje
+        }
+        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+        {
+            throw new HttpRequestException("Timeout al conectar con SWAPI", ex);
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException($"Error al obtener personaje {id} de SWAPI", ex);
         }
     }
 
     public async Task<List<Character>> SearchCharactersByNameAsync(string name, CancellationToken cancellationToken = default)
     {
-        var response = await _httpClient.GetAsync($"people/?search={Uri.EscapeDataString(name)}", cancellationToken);
-        response.EnsureSuccessStatusCode();
+        try
+        {
+            var response = await _httpClient.GetAsync($"people/?search={Uri.EscapeDataString(name)}", cancellationToken);
+            
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new HttpRequestException($"SWAPI returned status code: {response.StatusCode}");
+            }
 
-        var swapiResult = await response.Content.ReadFromJsonAsync<SwapiPagedResponse<SwapiPerson>>(_jsonOptions, cancellationToken);
-        
-        if (swapiResult == null || swapiResult.Results.Count == 0)
-            return new List<Character>();
+            var swapiResult = await response.Content.ReadFromJsonAsync<SwapiPagedResponse<SwapiPerson>>(_jsonOptions, cancellationToken);
+            
+            if (swapiResult == null || swapiResult.Results.Count == 0)
+                return new List<Character>();
 
-        return swapiResult.Results.Select(MapToCharacter).ToList();
+            return swapiResult.Results.Select(MapToCharacter).ToList();
+        }
+        catch (HttpRequestException)
+        {
+            throw; // Re-lanzar para que el controlador lo maneje
+        }
+        catch (TaskCanceledException ex) when (ex.InnerException is TimeoutException)
+        {
+            throw new HttpRequestException("Timeout al conectar con SWAPI", ex);
+        }
+        catch (Exception ex)
+        {
+            throw new HttpRequestException("Error al buscar personajes en SWAPI", ex);
+        }
     }
 
     public async Task<PagedResult<T>> GetResourceAsync<T>(string endpoint, int page = 1, CancellationToken cancellationToken = default)
