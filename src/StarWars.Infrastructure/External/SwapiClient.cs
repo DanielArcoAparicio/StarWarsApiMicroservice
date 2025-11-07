@@ -116,7 +116,7 @@ public class SwapiClient : ISwapiService
 
             var swapiResult = await response.Content.ReadFromJsonAsync<SwapiPagedResponse<SwapiPerson>>(_jsonOptions, cancellationToken);
             
-            if (swapiResult == null || swapiResult.Results.Count == 0)
+            if (swapiResult == null || swapiResult.Results == null || swapiResult.Results.Count == 0)
                 return new List<Character>();
 
             return swapiResult.Results.Select(MapToCharacter).ToList();
@@ -182,8 +182,25 @@ public class SwapiClient : ISwapiService
 
     private string ExtractIdFromUrl(string url)
     {
-        var parts = url.TrimEnd('/').Split('/');
-        return parts.Length > 0 ? parts[^1] : "0";
+        if (string.IsNullOrWhiteSpace(url))
+            return "0";
+
+        var trimmedUrl = url.TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(trimmedUrl))
+            return "0";
+
+        var parts = trimmedUrl.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+            return "0";
+
+        var lastPart = parts[^1];
+        
+        // Si el último segmento es numérico, es el ID
+        if (int.TryParse(lastPart, out _))
+            return lastPart;
+        
+        // Si no es numérico, no hay ID válido
+        return "0";
     }
 }
 

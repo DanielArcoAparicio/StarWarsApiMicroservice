@@ -10,8 +10,8 @@ COPY src/StarWars.Application/StarWars.Application.csproj src/StarWars.Applicati
 COPY src/StarWars.Infrastructure/StarWars.Infrastructure.csproj src/StarWars.Infrastructure/
 COPY src/StarWars.Client/StarWars.Client.csproj src/StarWars.Client/
 
-# Restore dependencies
-RUN dotnet restore
+# Restore dependencies (solo los proyectos necesarios, excluyendo tests)
+RUN dotnet restore src/StarWars.Api/StarWars.Api.csproj
 
 # Copy the rest of the source code
 COPY . .

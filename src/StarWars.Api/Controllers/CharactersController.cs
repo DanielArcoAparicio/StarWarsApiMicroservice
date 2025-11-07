@@ -49,6 +49,19 @@ public class CharactersController : ControllerBase
             if (cachedResult != null)
             {
                 _logger.LogInformation("Personajes obtenidos desde caché");
+                // Actualizar estado de favoritos (con manejo de errores)
+                foreach (var character in cachedResult.Results)
+                {
+                    try
+                    {
+                        character.IsFavorite = await _favoriteService.IsFavoriteAsync(character.Id);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Error al verificar si el personaje {Id} es favorito", character.Id);
+                        character.IsFavorite = false;
+                    }
+                }
                 return Ok(cachedResult);
             }
 

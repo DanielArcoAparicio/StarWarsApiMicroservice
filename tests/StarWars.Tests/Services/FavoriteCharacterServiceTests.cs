@@ -247,6 +247,102 @@ public class FavoriteCharacterServiceTests : IDisposable
         result.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task GetAllFavoritesAsync_HandlesDatabaseError_ReturnsEmptyList()
+    {
+        // Arrange
+        _dbContext.Dispose(); // Simular error de BD
+
+        // Act
+        var result = await _service.GetAllFavoritesAsync();
+
+        // Assert
+        result.Should().NotBeNull();
+        result.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task IsFavoriteAsync_HandlesDatabaseError_ReturnsFalse()
+    {
+        // Arrange
+        _dbContext.Dispose(); // Simular error de BD
+
+        // Act
+        var result = await _service.IsFavoriteAsync("1");
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetFavoriteBySwapiIdAsync_ReturnsNull_WhenDoesNotExist()
+    {
+        // Act
+        var result = await _service.GetFavoriteBySwapiIdAsync("999");
+
+        // Assert
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AddFavoriteAsync_CreatesFavorite_WithAllProperties()
+    {
+        // Arrange
+        var character = new Character
+        {
+            Id = "1",
+            Name = "Luke Skywalker",
+            Gender = "male",
+            BirthYear = "19BBY",
+            HomeWorld = "https://swapi.dev/api/planets/1/",
+            Films = new List<string> { "https://swapi.dev/api/films/1/" },
+            Species = new List<string>(),
+            Vehicles = new List<string>(),
+            Starships = new List<string>()
+        };
+
+        // Act
+        var result = await _service.AddFavoriteAsync(character, "My favorite character");
+
+        // Assert
+        result.Should().NotBeNull();
+        result.SwapiId.Should().Be("1");
+        result.Name.Should().Be("Luke Skywalker");
+        result.Gender.Should().Be("male");
+        result.BirthYear.Should().Be("19BBY");
+        result.HomeWorld.Should().Be("https://swapi.dev/api/planets/1/");
+        result.Notes.Should().Be("My favorite character");
+        result.AddedDate.Should().BeCloseTo(DateTime.UtcNow, TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task AddFavoriteAsync_CreatesFavorite_WithoutNotes()
+    {
+        // Arrange
+        var character = new Character
+        {
+            Id = "1",
+            Name = "Luke Skywalker"
+        };
+
+        // Act
+        var result = await _service.AddFavoriteAsync(character);
+
+        // Assert
+        result.Should().NotBeNull();
+        result.Notes.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task RemoveFavoriteBySwapiIdAsync_ReturnsFalse_WhenFavoriteDoesNotExist()
+    {
+        // Act
+        var result = await _service.RemoveFavoriteBySwapiIdAsync("999");
+
+        // Assert
+        result.Should().BeFalse();
+    }
+
     public void Dispose()
     {
         _dbContext.Dispose();

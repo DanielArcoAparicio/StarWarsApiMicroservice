@@ -243,5 +243,110 @@ public class FavoritesControllerTests
         var notFoundResult = result.Should().BeOfType<NotFoundObjectResult>().Subject;
         notFoundResult.StatusCode.Should().Be(404);
     }
+
+    [Fact]
+    public async Task GetFavorites_ReturnsEmptyList_WhenServiceReturnsNull()
+    {
+        // Arrange
+        _favoriteServiceMock.Setup(x => x.GetAllFavoritesAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync((List<FavoriteCharacter>)null!);
+
+        // Act
+        var result = await _controller.GetFavorites();
+
+        // Assert
+        result.Should().NotBeNull();
+        var okResult = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var returnedFavorites = okResult.Value.Should().BeOfType<List<FavoriteCharacter>>().Subject;
+        returnedFavorites.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetFavorites_HandlesException_Returns500()
+    {
+        // Arrange
+        _favoriteServiceMock.Setup(x => x.GetAllFavoritesAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Database error"));
+
+        // Act
+        var result = await _controller.GetFavorites();
+
+        // Assert
+        result.Should().NotBeNull();
+        var statusResult = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(500);
+    }
+
+    [Fact]
+    public async Task GetFavoriteById_HandlesException_Returns500()
+    {
+        // Arrange
+        var favoriteId = 1;
+        _favoriteServiceMock.Setup(x => x.GetFavoriteByIdAsync(favoriteId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Database error"));
+
+        // Act
+        var result = await _controller.GetFavoriteById(favoriteId);
+
+        // Assert
+        result.Should().NotBeNull();
+        var statusResult = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(500);
+    }
+
+    [Fact]
+    public async Task AddFavorite_HandlesException_Returns500()
+    {
+        // Arrange
+        var request = new AddFavoriteRequest { CharacterId = "1", Notes = "My favorite" };
+        var character = new Character { Id = "1", Name = "Luke Skywalker" };
+
+        _swapiServiceMock.Setup(x => x.GetCharacterByIdAsync(request.CharacterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(character);
+        _favoriteServiceMock.Setup(x => x.AddFavoriteAsync(character, request.Notes, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Database error"));
+
+        // Act
+        var result = await _controller.AddFavorite(request);
+
+        // Assert
+        result.Should().NotBeNull();
+        var statusResult = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(500);
+    }
+
+    [Fact]
+    public async Task RemoveFavorite_HandlesException_Returns500()
+    {
+        // Arrange
+        var favoriteId = 1;
+        _favoriteServiceMock.Setup(x => x.RemoveFavoriteAsync(favoriteId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Database error"));
+
+        // Act
+        var result = await _controller.RemoveFavorite(favoriteId);
+
+        // Assert
+        result.Should().NotBeNull();
+        var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(500);
+    }
+
+    [Fact]
+    public async Task RemoveFavoriteBySwapiId_HandlesException_Returns500()
+    {
+        // Arrange
+        var swapiId = "1";
+        _favoriteServiceMock.Setup(x => x.RemoveFavoriteBySwapiIdAsync(swapiId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Database error"));
+
+        // Act
+        var result = await _controller.RemoveFavoriteBySwapiId(swapiId);
+
+        // Assert
+        result.Should().NotBeNull();
+        var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(500);
+    }
 }
 

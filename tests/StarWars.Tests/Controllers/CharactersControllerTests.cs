@@ -79,8 +79,6 @@ public class CharactersControllerTests
 
         _cacheServiceMock.Setup(x => x.GetAsync<PagedResult<Character>>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(cachedResult);
-        _favoriteServiceMock.Setup(x => x.IsFavoriteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(false);
 
         // Act
         var result = await _controller.GetCharacters(page);
@@ -91,6 +89,7 @@ public class CharactersControllerTests
         var pagedResult = okResult.Value.Should().BeOfType<PagedResult<Character>>().Subject;
         pagedResult.Results.Should().HaveCount(1);
         _swapiServiceMock.Verify(x => x.GetCharactersAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        // Cuando hay caché, no se actualiza el estado de favoritos (se retorna directamente)
     }
 
     [Fact]
@@ -213,6 +212,398 @@ public class CharactersControllerTests
         result.Should().NotBeNull();
         var statusResult = result.Result.Should().BeOfType<ObjectResult>().Subject;
         statusResult.StatusCode.Should().Be(503);
+    }
+
+    [Fact]
+    public async Task GetCharacters_Returns500_WhenResultIsNull()
+    {
+        // Arrange
+        var page = 1;
+        _cacheServiceMock.Setup(x => x.GetAsync<PagedResult<Character>>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PagedResult<Character>?)null);
+        _swapiServiceMock.Setup(x => x.GetCharactersAsync(page, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PagedResult<Character>)null!);
+
+        // Act
+        var result = await _controller.GetCharacters(page);
+
+        // Assert
+        result.Should().NotBeNull();
+        var statusResult = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(500);
+    }
+
+    [Fact]
+    public async Task GetCharacters_HandlesFavoriteServiceException_ContinuesWithFalse()
+    {
+        // Arrange
+        var page = 1;
+        var expectedResult = new PagedResult<Character>
+        {
+            Count = 1,
+            Page = page,
+            Results = new List<Character> { new Character { Id = "1", Name = "Luke Skywalker" } }
+        };
+
+        _cacheServiceMock.Setup(x => x.GetAsync<PagedResult<Character>>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PagedResult<Character>?)null);
+        _swapiServiceMock.Setup(x => x.GetCharactersAsync(page, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedResult);
+        _favoriteServiceMock.Setup(x => x.IsFavoriteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("DB error"));
+
+        // Act
+        var result = await _controller.GetCharacters(page);
+
+        // Assert
+        result.Should().NotBeNull();
+        var okResult = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var pagedResult = okResult.Value.Should().BeOfType<PagedResult<Character>>().Subject;
+        pagedResult.Results[0].IsFavorite.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetCharacters_HandlesCacheException_ContinuesWithoutCache()
+    {
+        // Arrange
+        var page = 1;
+        var expectedResult = new PagedResult<Character>
+        {
+            Count = 1,
+            Page = page,
+            Results = new List<Character> { new Character { Id = "1", Name = "Luke Skywalker" } }
+        };
+
+        _cacheServiceMock.Setup(x => x.GetAsync<PagedResult<Character>>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PagedResult<Character>?)null);
+        _swapiServiceMock.Setup(x => x.GetCharactersAsync(page, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedResult);
+        _favoriteServiceMock.Setup(x => x.IsFavoriteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _cacheServiceMock.Setup(x => x.SetAsync(It.IsAny<string>(), It.IsAny<PagedResult<Character>>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Cache error"));
+
+        // Act
+        var result = await _controller.GetCharacters(page);
+
+        // Assert
+        result.Should().NotBeNull();
+        var okResult = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        okResult.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GetCharacterById_ReturnsCachedCharacter_WhenInCache()
+    {
+        // Arrange
+        var characterId = "1";
+        var cachedCharacter = new Character { Id = characterId, Name = "Luke Skywalker" };
+
+        _cacheServiceMock.Setup(x => x.GetAsync<Character>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cachedCharacter);
+        _favoriteServiceMock.Setup(x => x.IsFavoriteAsync(characterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _controller.GetCharacterById(characterId);
+
+        // Assert
+        result.Should().NotBeNull();
+        var okResult = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var character = okResult.Value.Should().BeOfType<Character>().Subject;
+        character.IsFavorite.Should().BeTrue();
+        _swapiServiceMock.Verify(x => x.GetCharacterByIdAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetCharacterById_HandlesFavoriteServiceException_ContinuesWithFalse()
+    {
+        // Arrange
+        var characterId = "1";
+        var character = new Character { Id = characterId, Name = "Luke Skywalker" };
+
+        _cacheServiceMock.Setup(x => x.GetAsync<Character>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Character?)null);
+        _swapiServiceMock.Setup(x => x.GetCharacterByIdAsync(characterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(character);
+        _favoriteServiceMock.Setup(x => x.IsFavoriteAsync(characterId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("DB error"));
+
+        // Act
+        var result = await _controller.GetCharacterById(characterId);
+
+        // Assert
+        result.Should().NotBeNull();
+        var okResult = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var returnedCharacter = okResult.Value.Should().BeOfType<Character>().Subject;
+        returnedCharacter.IsFavorite.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SearchCharacters_ReturnsEmptyList_WhenResultIsNull()
+    {
+        // Arrange
+        var searchName = "NonExistent";
+        _swapiServiceMock.Setup(x => x.SearchCharactersByNameAsync(searchName, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((List<Character>)null!);
+
+        // Act
+        var result = await _controller.SearchCharacters(searchName);
+
+        // Assert
+        result.Should().NotBeNull();
+        var okResult = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var characters = okResult.Value.Should().BeOfType<List<Character>>().Subject;
+        characters.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetCharacters_HandlesResultsNull_Returns500()
+    {
+        // Arrange
+        var page = 1;
+        var expectedResult = new PagedResult<Character>
+        {
+            Count = 1,
+            Page = page,
+            Results = null!
+        };
+
+        _cacheServiceMock.Setup(x => x.GetAsync<PagedResult<Character>>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PagedResult<Character>?)null);
+        _swapiServiceMock.Setup(x => x.GetCharactersAsync(page, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedResult);
+
+        // Act
+        var result = await _controller.GetCharacters(page);
+
+        // Assert
+        result.Should().NotBeNull();
+        var statusResult = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(500);
+    }
+
+    [Fact]
+    public async Task GetCharacterById_HandlesCacheException_ContinuesWithoutCache()
+    {
+        // Arrange
+        var characterId = "1";
+        var character = new Character { Id = characterId, Name = "Luke Skywalker" };
+
+        _cacheServiceMock.Setup(x => x.GetAsync<Character>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Character?)null); // Cache no tiene el valor, no lanza excepción
+        _swapiServiceMock.Setup(x => x.GetCharacterByIdAsync(characterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(character);
+        _favoriteServiceMock.Setup(x => x.IsFavoriteAsync(characterId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        _cacheServiceMock.Setup(x => x.SetAsync(It.IsAny<string>(), It.IsAny<Character>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Cache error")); // Error al guardar en caché
+
+        // Act
+        var result = await _controller.GetCharacterById(characterId);
+
+        // Assert
+        result.Should().NotBeNull();
+        var okResult = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        okResult.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task GetCharacters_ReturnsCachedResult_WithFavoriteStatus()
+    {
+        // Arrange
+        var page = 1;
+        var cachedResult = new PagedResult<Character>
+        {
+            Count = 1,
+            Page = page,
+            Results = new List<Character> { new Character { Id = "1", Name = "Luke Skywalker", IsFavorite = false } }
+        };
+
+        _cacheServiceMock.Setup(x => x.GetAsync<PagedResult<Character>>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cachedResult);
+        _favoriteServiceMock.Setup(x => x.IsFavoriteAsync("1", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        // Act
+        var result = await _controller.GetCharacters(page);
+
+        // Assert
+        result.Should().NotBeNull();
+        var okResult = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var pagedResult = okResult.Value.Should().BeOfType<PagedResult<Character>>().Subject;
+        // El controlador ahora actualiza IsFavorite cuando hay caché
+        pagedResult.Results[0].IsFavorite.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetCharacters_ReturnsCachedResult_WithoutCallingSwapi()
+    {
+        // Arrange
+        var page = 1;
+        var cachedResult = new PagedResult<Character>
+        {
+            Count = 1,
+            Page = page,
+            Results = new List<Character> { new Character { Id = "1", Name = "Luke Skywalker" } }
+        };
+
+        _cacheServiceMock.Setup(x => x.GetAsync<PagedResult<Character>>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cachedResult);
+        _favoriteServiceMock.Setup(x => x.IsFavoriteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        // Act
+        var result = await _controller.GetCharacters(page);
+
+        // Assert
+        result.Should().NotBeNull();
+        _swapiServiceMock.Verify(x => x.GetCharactersAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _cacheServiceMock.Verify(x => x.SetAsync(It.IsAny<string>(), It.IsAny<PagedResult<Character>>(), It.IsAny<TimeSpan?>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task GetCharacters_HandlesFavoriteServiceException_InCachedResult()
+    {
+        // Arrange
+        var page = 1;
+        var cachedResult = new PagedResult<Character>
+        {
+            Count = 1,
+            Page = page,
+            Results = new List<Character> { new Character { Id = "1", Name = "Luke Skywalker" } }
+        };
+
+        _cacheServiceMock.Setup(x => x.GetAsync<PagedResult<Character>>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cachedResult);
+        _favoriteServiceMock.Setup(x => x.IsFavoriteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("DB error"));
+
+        // Act
+        var result = await _controller.GetCharacters(page);
+
+        // Assert
+        result.Should().NotBeNull();
+        var okResult = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var pagedResult = okResult.Value.Should().BeOfType<PagedResult<Character>>().Subject;
+        pagedResult.Results[0].IsFavorite.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetCharacters_HandlesGeneralException_Returns500()
+    {
+        // Arrange
+        var page = 1;
+        _cacheServiceMock.Setup(x => x.GetAsync<PagedResult<Character>>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Unexpected error"));
+
+        // Act
+        var result = await _controller.GetCharacters(page);
+
+        // Assert
+        result.Should().NotBeNull();
+        var statusResult = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(500);
+    }
+
+    [Fact]
+    public async Task GetCharacterById_HandlesFavoriteServiceException_InCachedResult()
+    {
+        // Arrange
+        var characterId = "1";
+        var cachedCharacter = new Character { Id = characterId, Name = "Luke Skywalker" };
+
+        _cacheServiceMock.Setup(x => x.GetAsync<Character>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(cachedCharacter);
+        _favoriteServiceMock.Setup(x => x.IsFavoriteAsync(characterId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("DB error"));
+
+        // Act
+        var result = await _controller.GetCharacterById(characterId);
+
+        // Assert
+        result.Should().NotBeNull();
+        var okResult = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var character = okResult.Value.Should().BeOfType<Character>().Subject;
+        character.IsFavorite.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetCharacterById_HandlesHttpRequestException_ReturnsServiceUnavailable()
+    {
+        // Arrange
+        var characterId = "1";
+        _cacheServiceMock.Setup(x => x.GetAsync<Character>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Character?)null);
+        _swapiServiceMock.Setup(x => x.GetCharacterByIdAsync(characterId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("SWAPI unavailable"));
+
+        // Act
+        var result = await _controller.GetCharacterById(characterId);
+
+        // Assert
+        result.Should().NotBeNull();
+        var statusResult = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(503);
+    }
+
+    [Fact]
+    public async Task GetCharacterById_HandlesGeneralException_Returns500()
+    {
+        // Arrange
+        var characterId = "1";
+        _cacheServiceMock.Setup(x => x.GetAsync<Character>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Unexpected error"));
+
+        // Act
+        var result = await _controller.GetCharacterById(characterId);
+
+        // Assert
+        result.Should().NotBeNull();
+        var statusResult = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(500);
+    }
+
+    [Fact]
+    public async Task SearchCharacters_HandlesFavoriteServiceException_ContinuesWithFalse()
+    {
+        // Arrange
+        var searchName = "Luke";
+        var characters = new List<Character>
+        {
+            new Character { Id = "1", Name = "Luke Skywalker" }
+        };
+
+        _swapiServiceMock.Setup(x => x.SearchCharactersByNameAsync(searchName, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(characters);
+        _favoriteServiceMock.Setup(x => x.IsFavoriteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("DB error"));
+
+        // Act
+        var result = await _controller.SearchCharacters(searchName);
+
+        // Assert
+        result.Should().NotBeNull();
+        var okResult = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        var returnedCharacters = okResult.Value.Should().BeOfType<List<Character>>().Subject;
+        returnedCharacters[0].IsFavorite.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SearchCharacters_HandlesGeneralException_Returns500()
+    {
+        // Arrange
+        var searchName = "Luke";
+        _swapiServiceMock.Setup(x => x.SearchCharactersByNameAsync(searchName, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new Exception("Unexpected error"));
+
+        // Act
+        var result = await _controller.SearchCharacters(searchName);
+
+        // Assert
+        result.Should().NotBeNull();
+        var statusResult = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(500);
     }
 }
 
